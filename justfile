@@ -38,27 +38,6 @@ lint:
   cargo check
   cargo clippy --all -- -D warnings
 
-# Run example local_std that parses packets incoming via USB serial port.
-example_std:
-  cargo run --example=std
-
-# Run example local_raw that parses raw packets incoming via USB serial port.
-example_raw:
-  cargo run --example=raw
-
-# Run example local_simple that parses hard coded buffer.
-example_simple:
-  cargo run --example=simple
-
-# Run example local_simple that parses hard coded buffer.
-example_async:
-  cargo run --example=async --all-features
-
-# Run example local_simple that parses hard coded buffer.
-example_blocking:
-  cargo run --example=blocking --all-features
-
-
 # Lint source code with strict linter
 pedantic:
   cargo clippy -- -W clippy::pedantic
