@@ -29,7 +29,7 @@ pub use config::TemperatureResolution;
 pub use register::Register;
 
 /// DPS310 Product ID <https://www.infineon.com/dgdl/Infineon-DPS310-DataSheet-v01_01-EN.pdf?fileId=5546d462576f34750157750826c42242>, P. 25
-const PRODUCT_ID: u8 = 0x10;
+const PRODUCT_ID: u8 = 0x00;
 
 fn prs_cfg_value(current: u8, config: &Config) -> u8 {
     (current & 0x80)
