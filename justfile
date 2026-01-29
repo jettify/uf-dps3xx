@@ -13,7 +13,6 @@ doc:
 # Run cargo build
 build:
   cargo build
-  cargo build --examples --features=embedded_io_async,embedded_io
 
 # Run cargo clean
 clean:
@@ -60,4 +59,3 @@ ci:
   just lint
   just build
   cargo test --all-features
-  cargo test --examples --features=embedded_io_async,embedded_io
