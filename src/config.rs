@@ -39,21 +39,6 @@ impl PressureResolution {
     pub fn val(self) -> u8 {
         self as u8
     }
-
-    #[allow(non_snake_case)]
-    pub fn get_kP_value(self) -> f32 {
-        // See Section 4.9.3 Sec. "Compensation Scale Factors", Table 9. Col. "Scale Factor column"
-        match self {
-            PressureResolution::_1_SAMPLES => 524_288_f32,
-            PressureResolution::_2_SAMPLES => 1_572_864_f32,
-            PressureResolution::_4_SAMPLES => 3_670_016_f32,
-            PressureResolution::_8_SAMPLES => 7_864_320_f32,
-            PressureResolution::_16_SAMPLES => 253_952_f32,
-            PressureResolution::_32_SAMPLES => 516_096_f32,
-            PressureResolution::_64_SAMPLES => 1_040_384_f32,
-            PressureResolution::_128_SAMPLES => 2_088_960_f32,
-        }
-    }
 }
 
 /// Temperature rate
@@ -95,21 +80,6 @@ pub enum TemperatureResolution {
 impl TemperatureResolution {
     pub fn val(self) -> u8 {
         self as u8
-    }
-
-    #[allow(non_snake_case)]
-    pub fn get_kt_value(self) -> f32 {
-        // See Section 4.9.3 Sec. "Compensation Scale Factors", Table 9. Col. "Scale Factor column"
-        match self {
-            TemperatureResolution::_1_SAMPLES => 524_288_f32,
-            TemperatureResolution::_2_SAMPLES => 1_572_864_f32,
-            TemperatureResolution::_4_SAMPLES => 3_670_016_f32,
-            TemperatureResolution::_8_SAMPLES => 7_864_320_f32,
-            TemperatureResolution::_16_SAMPLES => 253_952_f32,
-            TemperatureResolution::_32_SAMPLES => 516_096_f32,
-            TemperatureResolution::_64_SAMPLES => 1_040_384_f32,
-            TemperatureResolution::_128_SAMPLES => 2_088_960_f32,
-        }
     }
 }
 

@@ -30,6 +30,16 @@ pub use register::Register;
 
 /// DPS310 Product ID <https://www.infineon.com/dgdl/Infineon-DPS310-DataSheet-v01_01-EN.pdf?fileId=5546d462576f34750157750826c42242>, P. 25
 const PRODUCT_ID: u8 = 0x00;
+const SCALE_FACTORS: [f32; 8] = [
+    524_288_f32,
+    1_572_864_f32,
+    3_670_016_f32,
+    7_864_320_f32,
+    253_952_f32,
+    516_096_f32,
+    1_040_384_f32,
+    2_088_960_f32,
+];
 
 fn prs_cfg_value(current: u8, config: &Config) -> u8 {
     (current & 0x80)
@@ -105,8 +115,6 @@ impl<I2CError> From<I2CError> for Error<I2CError> {
 pub struct DPS310<I2C, S> {
     bus: I2cBus<I2C>,
     coeffs: CalibrationCoeffs,
-    pres_res: PressureResolution,
-    temp_res: TemperatureResolution,
     config: Config,
     _state: PhantomData<S>,
 }
@@ -119,8 +127,6 @@ where
         let dps310 = Self {
             bus: I2cBus::new(i2c, address),
             coeffs: CalibrationCoeffs::default(),
-            pres_res: config.pres_res.unwrap_or_default(),
-            temp_res: config.temp_res.unwrap_or_default(),
             config: *config,
             _state: PhantomData,
         };
@@ -224,7 +230,9 @@ where
 
     /// See section 4.9.2:
     fn read_temp_scaled(&mut self) -> Result<f32, Error<I2CError>> {
-        let raw_sc: f32 = self.read_temp_raw()? as f32 / self.temp_res.get_kt_value();
+        let temp_cfg = self.read_reg(Register::TEMP_CFG)?;
+        let osr = (temp_cfg & 0x07) as usize;
+        let raw_sc: f32 = self.read_temp_raw()? as f32 / SCALE_FACTORS[osr];
         Ok(raw_sc)
     }
 
@@ -234,9 +242,10 @@ where
     }
 
     fn read_pressure_scaled(&mut self) -> Result<f32, Error<I2CError>> {
+        let prs_cfg = self.read_reg(Register::PRS_CFG)?;
+        let osr = (prs_cfg & 0x07) as usize;
         let pres_raw = self.read_pressure_raw()?;
-        let k_p = self.pres_res.get_kP_value();
-        let pres_scaled = pres_raw as f32 / k_p;
+        let pres_scaled = pres_raw as f32 / SCALE_FACTORS[osr];
 
         Ok(pres_scaled)
     }
@@ -338,8 +347,6 @@ where
         DPS310 {
             bus: self.bus,
             coeffs: self.coeffs,
-            pres_res: self.pres_res,
-            temp_res: self.temp_res,
             config: self.config,
             _state: PhantomData,
         }

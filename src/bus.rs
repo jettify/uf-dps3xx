@@ -18,10 +18,6 @@ impl<I2C> I2cBus<I2C> {
     pub(crate) fn new(i2c: I2C, address: u8) -> Self {
         Self { i2c, address }
     }
-
-    pub(crate) fn release(self) -> I2C {
-        self.i2c
-    }
 }
 
 impl<I2C, I2CError> Bus for I2cBus<I2C>
