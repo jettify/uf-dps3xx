@@ -8,6 +8,7 @@ use crate::device_internal::{
 };
 use crate::register::Register;
 use core::marker::PhantomData;
+use embedded_hal::delay::DelayNs;
 use embedded_hal::i2c::I2c;
 
 pub use crate::device_internal::{
@@ -137,6 +138,32 @@ where
 
         Ok(self.into_state())
     }
+
+    pub fn init_and_calibrate<D>(
+        self,
+        delay: &mut D,
+    ) -> Result<DPS3xx<I2C, Calibrated>, Error<I2CError>>
+    where
+        D: DelayNs,
+    {
+        let mut dps = self.start_init()?;
+
+        let mut dps = loop {
+            match dps.poll_init()? {
+                InitPoll::Pending(wait_ms) => delay.delay_ms(wait_ms),
+                InitPoll::Ready => match dps.finish_init() {
+                    Ok(dps) => break dps,
+                    Err(unfinished) => dps = unfinished,
+                },
+            }
+        };
+
+        while !dps.coef_ready()? {
+            delay.delay_ms(10);
+        }
+
+        dps.read_calibration_coefficients_unchecked()
+    }
 }
 
 impl<I2C, I2CError> DPS3xx<I2C, InitInProgress>
@@ -205,6 +232,12 @@ where
             return Err(Error::CoefficientsNotReady);
         }
 
+        self.read_calibration_coefficients_unchecked()
+    }
+
+    fn read_calibration_coefficients_unchecked(
+        mut self,
+    ) -> Result<DPS3xx<I2C, Calibrated>, Error<I2CError>> {
         let mut bytes: [u8; 18] = [0; 18];
         self.bus.read_many(Register::COEFF_REG_1, &mut bytes)?;
 

@@ -1,4 +1,4 @@
-use embedded_hal::i2c::I2c;
+use embedded_hal::{delay::DelayNs, i2c::I2c};
 use embedded_hal_mock::eh1::i2c::{Mock as I2cMock, Transaction as I2cTransaction};
 use uf_dps3xx::{
     calc_total_wait_ms, Config, Configured, DPS3xx, Error, InitInProgress, InitPoll,
@@ -7,6 +7,12 @@ use uf_dps3xx::{
 };
 
 const ADDR: u8 = 0x77;
+
+struct TestDelay;
+
+impl DelayNs for TestDelay {
+    fn delay_ns(&mut self, _ns: u32) {}
+}
 
 fn finish_init<I2C>(dps: DPS3xx<I2C, InitInProgress>) -> DPS3xx<I2C, Configured>
 where
@@ -207,6 +213,40 @@ fn test_read_calibration_coefficients_requires_coef_ready() {
         dps.read_calibration_coefficients(),
         Err(Error::CoefficientsNotReady)
     ));
+    i2c.done();
+}
+
+#[test]
+fn test_init_and_calibrate() {
+    let expectations = [
+        I2cTransaction::write_read(ADDR, vec![Register::PROD_ID.addr()], vec![0x10]),
+        I2cTransaction::write_read(ADDR, vec![Register::PRS_CFG.addr()], vec![0x00]),
+        I2cTransaction::write(ADDR, vec![Register::PRS_CFG.addr(), 0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::TEMP_CFG.addr()], vec![0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::TMP_COEF_SRCE.addr()], vec![0x00]),
+        I2cTransaction::write(ADDR, vec![Register::TEMP_CFG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::CFG_REG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![0x0E, 0xA5]),
+        I2cTransaction::write(ADDR, vec![0x0F, 0x96]),
+        I2cTransaction::write(ADDR, vec![0x62, 0x02]),
+        I2cTransaction::write(ADDR, vec![0x0E, 0x00]),
+        I2cTransaction::write(ADDR, vec![0x0F, 0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x40]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x02]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x60]),
+        I2cTransaction::write_read(ADDR, vec![Register::TMP_B2.addr()], vec![0x00, 0x00, 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x80]),
+        I2cTransaction::write_read(ADDR, vec![Register::COEFF_REG_1.addr()], vec![0; 18]),
+    ];
+
+    let mut i2c = I2cMock::new(&expectations);
+    let config = Config::new();
+    let dps = DPS3xx::new(i2c.clone(), ADDR, &config).unwrap();
+    let mut delay = TestDelay;
+
+    let _dps = dps.init_and_calibrate(&mut delay).unwrap();
     i2c.done();
 }
 
