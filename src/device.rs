@@ -538,7 +538,8 @@ where
     fn read_i24(&mut self, reg: Register) -> Result<i32, Error<I2CError>> {
         let mut bytes: [u8; 3] = [0, 0, 0];
         self.bus.read_many(reg, &mut bytes)?;
-        let value = ((bytes[0] as u32) << 16) | ((bytes[1] as u32) << 8) | (bytes[2] as u32);
+        let value =
+            (u32::from(bytes[0]) << 16) | (u32::from(bytes[1]) << 8) | u32::from(bytes[2]);
         Ok(get_twos_complement(value, 24))
     }
 }

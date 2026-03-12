@@ -36,7 +36,7 @@ pub(crate) fn prs_cfg_value(current: u8, config: &Config) -> u8 {
 pub(crate) fn tmp_cfg_value(current: u8, config: &Config, coef_source: Option<bool>) -> u8 {
     let temp_ext = config.temp_ext.or(coef_source);
     let ext_bit = match temp_ext {
-        Some(external) => (external as u8) << 7,
+        Some(external) => u8::from(external) << 7,
         None => current & 0x80,
     };
 
@@ -46,12 +46,12 @@ pub(crate) fn tmp_cfg_value(current: u8, config: &Config, coef_source: Option<bo
 }
 
 pub(crate) fn cfg_reg_value(config: &Config, temp_shift: bool, pres_shift: bool) -> u8 {
-    ((config.int_hl as u8) << 7)
-        | ((config.int_fifo as u8) << 6)
-        | ((config.int_temp as u8) << 5)
-        | ((config.int_pres as u8) << 4)
-        | ((temp_shift as u8) << 3)
-        | ((pres_shift as u8) << 2)
-        | ((config.fifo_enable as u8) << 1)
-        | (config.spi_mode as u8)
+    (u8::from(config.int_hl) << 7)
+        | (u8::from(config.int_fifo) << 6)
+        | (u8::from(config.int_temp) << 5)
+        | (u8::from(config.int_pres) << 4)
+        | (u8::from(temp_shift) << 3)
+        | (u8::from(pres_shift) << 2)
+        | (u8::from(config.fifo_enable) << 1)
+        | u8::from(config.spi_mode)
 }
