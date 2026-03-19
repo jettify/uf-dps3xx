@@ -492,7 +492,7 @@ where
 
     /// Issue a full reset and fifo flush
     pub fn reset(mut self) -> Result<DPS3xx<I2C, Unconfigured>, Error<I2CError>> {
-        self.write_reg(Register::RESET, 0b10001001)?;
+        self.write_reg(Register::RESET, 0b1000_1001)?;
         self.init_ready = false;
         self.init_temp_started = false;
 
@@ -538,8 +538,7 @@ where
     fn read_i24(&mut self, reg: Register) -> Result<i32, Error<I2CError>> {
         let mut bytes: [u8; 3] = [0, 0, 0];
         self.bus.read_many(reg, &mut bytes)?;
-        let value =
-            (u32::from(bytes[0]) << 16) | (u32::from(bytes[1]) << 8) | u32::from(bytes[2]);
+        let value = (u32::from(bytes[0]) << 16) | (u32::from(bytes[1]) << 8) | u32::from(bytes[2]);
         Ok(get_twos_complement(value, 24))
     }
 }

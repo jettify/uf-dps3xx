@@ -55,3 +55,15 @@ pub(crate) fn cfg_reg_value(config: &Config, temp_shift: bool, pres_shift: bool)
         | (u8::from(config.fifo_enable) << 1)
         | u8::from(config.spi_mode)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::tmp_cfg_value;
+    use crate::Config;
+
+    #[test]
+    fn test_tmp_cfg_value_preserves_current_ext_bit_without_source_override() {
+        let cfg = Config::new();
+        assert_eq!(tmp_cfg_value(0x80, &cfg, None), 0x80);
+    }
+}

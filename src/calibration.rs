@@ -34,9 +34,7 @@ pub(crate) fn process_calibration_coefficients(
     );
 
     coeffs.C10 = get_twos_complement(
-        ((u32::from(bytes[5]) & 0x0F) << 16)
-            | (u32::from(bytes[6]) << 8)
-            | u32::from(bytes[7]),
+        ((u32::from(bytes[5]) & 0x0F) << 16) | (u32::from(bytes[6]) << 8) | u32::from(bytes[7]),
         20,
     );
 
@@ -70,4 +68,14 @@ pub(crate) fn get_twos_complement(val: u32, length: u8) -> i32 {
         ret -= 1 << length;
     }
     ret
+}
+
+#[cfg(test)]
+mod tests {
+    use super::get_twos_complement;
+
+    #[test]
+    fn test_get_twos_complement_negative_value() {
+        assert_eq!(get_twos_complement(0b1111_1111_1111, 12), -1);
+    }
 }

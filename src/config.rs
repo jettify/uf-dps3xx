@@ -244,6 +244,22 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_enum_helpers_and_default() {
+        assert_eq!(PressureRate::_64_SPS.val(), 0b110);
+        assert_eq!(u8::from(PressureRate::_128_SPS), 0b111);
+        assert_eq!(PressureResolution::_32_SAMPLES.val(), 0b101);
+        assert_eq!(u8::from(PressureResolution::_64_SAMPLES), 0b110);
+        assert_eq!(TemperatureRate::_16_SPS.val(), 0b100);
+        assert_eq!(u8::from(TemperatureRate::_8_SPS), 0b011);
+        assert_eq!(TemperatureResolution::_2_SAMPLES.val(), 0b001);
+        assert_eq!(u8::from(TemperatureResolution::_128_SAMPLES), 0b111);
+
+        let cfg = Config::default();
+        assert_eq!(cfg.pres_rate, None);
+        assert_eq!(cfg.init_timeout_ms, 5000);
+    }
+
+    #[test]
     fn test_config_new_defaults() {
         let cfg = Config::new();
 
