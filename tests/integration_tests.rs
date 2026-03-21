@@ -288,6 +288,55 @@ fn test_start_measurement() {
 }
 
 #[test]
+fn test_start_measurement_supports_remaining_modes() {
+    let expectations = [
+        I2cTransaction::write_read(ADDR, vec![Register::PROD_ID.addr()], vec![0x10]),
+        I2cTransaction::write_read(ADDR, vec![Register::PRS_CFG.addr()], vec![0x00]),
+        I2cTransaction::write(ADDR, vec![Register::PRS_CFG.addr(), 0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::TEMP_CFG.addr()], vec![0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::TMP_COEF_SRCE.addr()], vec![0x00]),
+        I2cTransaction::write(ADDR, vec![Register::TEMP_CFG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::CFG_REG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![0x0E, 0xA5]),
+        I2cTransaction::write(ADDR, vec![0x0F, 0x96]),
+        I2cTransaction::write(ADDR, vec![0x62, 0x02]),
+        I2cTransaction::write(ADDR, vec![0x0E, 0x00]),
+        I2cTransaction::write(ADDR, vec![0x0F, 0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x40]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x02]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x60]),
+        I2cTransaction::write_read(ADDR, vec![Register::TMP_B2.addr()], vec![0x00, 0x00, 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0xE0]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0xE1]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0xE1]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0xE5]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0xE5]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0xE6]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0xE6]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0xE7]),
+    ];
+
+    let mut i2c = I2cMock::new(&expectations);
+    let config = Config::new();
+    let dps = DPS3xx::new(i2c.clone(), ADDR, &config).unwrap();
+    let mut dps = dps.start_init().unwrap();
+    poll_init_ready(&mut dps);
+    let mut dps = finish_init(dps);
+
+    dps.start_measurement(MeasurementMode::OneShotPressure)
+        .unwrap();
+    dps.start_measurement(MeasurementMode::BackgroundPressure)
+        .unwrap();
+    dps.start_measurement(MeasurementMode::BackgroundTemperature)
+        .unwrap();
+    dps.start_measurement(MeasurementMode::BackgroundPressureAndTemperature)
+        .unwrap();
+    i2c.done();
+}
+
+#[test]
 fn test_read_temp_calibrated() {
     let expectations = [
         I2cTransaction::write_read(ADDR, vec![Register::PROD_ID.addr()], vec![0x10]),
@@ -323,6 +372,51 @@ fn test_read_temp_calibrated() {
     let mut dps = dps.read_calibration_coefficients().unwrap();
 
     let _temp = dps.read_temp_calibrated().unwrap();
+    i2c.done();
+}
+
+#[test]
+fn test_try_read_temp_calibrated() {
+    let expectations = [
+        I2cTransaction::write_read(ADDR, vec![Register::PROD_ID.addr()], vec![0x10]),
+        I2cTransaction::write_read(ADDR, vec![Register::PRS_CFG.addr()], vec![0x00]),
+        I2cTransaction::write(ADDR, vec![Register::PRS_CFG.addr(), 0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::TEMP_CFG.addr()], vec![0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::TMP_COEF_SRCE.addr()], vec![0x00]),
+        I2cTransaction::write(ADDR, vec![Register::TEMP_CFG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::CFG_REG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![0x0E, 0xA5]),
+        I2cTransaction::write(ADDR, vec![0x0F, 0x96]),
+        I2cTransaction::write(ADDR, vec![0x62, 0x02]),
+        I2cTransaction::write(ADDR, vec![0x0E, 0x00]),
+        I2cTransaction::write(ADDR, vec![0x0F, 0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x40]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x02]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x60]),
+        I2cTransaction::write_read(ADDR, vec![Register::TMP_B2.addr()], vec![0x00, 0x00, 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x80]),
+        I2cTransaction::write_read(ADDR, vec![Register::COEFF_REG_1.addr()], vec![0; 18]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x20]),
+        I2cTransaction::write_read(ADDR, vec![Register::TEMP_CFG.addr()], vec![0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::TMP_B2.addr()], vec![0x00, 0x00, 0x00]),
+    ];
+
+    let mut i2c = I2cMock::new(&expectations);
+    let config = Config::new();
+    let dps = DPS3xx::new(i2c.clone(), ADDR, &config).unwrap();
+    let mut dps = dps.start_init().unwrap();
+    poll_init_ready(&mut dps);
+    let dps = finish_init(dps);
+    let mut dps = dps.read_calibration_coefficients().unwrap();
+
+    assert!(matches!(
+        dps.try_read_temp_calibrated(),
+        Err(nb::Error::WouldBlock)
+    ));
+    assert_eq!(dps.try_read_temp_calibrated().unwrap(), 0.0);
     i2c.done();
 }
 
@@ -416,6 +510,53 @@ fn test_read_pressure_calibrated() {
 }
 
 #[test]
+fn test_try_read_pressure_calibrated() {
+    let expectations = [
+        I2cTransaction::write_read(ADDR, vec![Register::PROD_ID.addr()], vec![0x10]),
+        I2cTransaction::write_read(ADDR, vec![Register::PRS_CFG.addr()], vec![0x00]),
+        I2cTransaction::write(ADDR, vec![Register::PRS_CFG.addr(), 0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::TEMP_CFG.addr()], vec![0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::TMP_COEF_SRCE.addr()], vec![0x00]),
+        I2cTransaction::write(ADDR, vec![Register::TEMP_CFG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::CFG_REG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![0x0E, 0xA5]),
+        I2cTransaction::write(ADDR, vec![0x0F, 0x96]),
+        I2cTransaction::write(ADDR, vec![0x62, 0x02]),
+        I2cTransaction::write(ADDR, vec![0x0E, 0x00]),
+        I2cTransaction::write(ADDR, vec![0x0F, 0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x40]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x02]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x60]),
+        I2cTransaction::write_read(ADDR, vec![Register::TMP_B2.addr()], vec![0x00, 0x00, 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x80]),
+        I2cTransaction::write_read(ADDR, vec![Register::COEFF_REG_1.addr()], vec![0; 18]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x10]),
+        I2cTransaction::write_read(ADDR, vec![Register::PRS_CFG.addr()], vec![0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::PSR_B2.addr()], vec![0x00, 0x04, 0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::TEMP_CFG.addr()], vec![0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::TMP_B2.addr()], vec![0x00, 0x04, 0x00]),
+    ];
+
+    let mut i2c = I2cMock::new(&expectations);
+    let config = Config::new();
+    let dps = DPS3xx::new(i2c.clone(), ADDR, &config).unwrap();
+    let mut dps = dps.start_init().unwrap();
+    poll_init_ready(&mut dps);
+    let dps = finish_init(dps);
+    let mut dps = dps.read_calibration_coefficients().unwrap();
+
+    assert!(matches!(
+        dps.try_read_pressure_calibrated(),
+        Err(nb::Error::WouldBlock)
+    ));
+    assert_eq!(dps.try_read_pressure_calibrated().unwrap(), 0.0);
+    i2c.done();
+}
+
+#[test]
 fn test_reset() {
     let expectations = [
         I2cTransaction::write_read(ADDR, vec![Register::PROD_ID.addr()], vec![0x10]),
@@ -489,6 +630,32 @@ fn test_start_init_accepts_revision_variants() {
 }
 
 #[test]
+fn test_start_init_with_explicit_temp_source_skips_coef_source_read() {
+    let expectations = [
+        I2cTransaction::write_read(ADDR, vec![Register::PROD_ID.addr()], vec![0x10]),
+        I2cTransaction::write_read(ADDR, vec![Register::PRS_CFG.addr()], vec![0x00]),
+        I2cTransaction::write(ADDR, vec![Register::PRS_CFG.addr(), 0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::TEMP_CFG.addr()], vec![0x00]),
+        I2cTransaction::write(ADDR, vec![Register::TEMP_CFG.addr(), 0x80]),
+        I2cTransaction::write(ADDR, vec![Register::CFG_REG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![0x0E, 0xA5]),
+        I2cTransaction::write(ADDR, vec![0x0F, 0x96]),
+        I2cTransaction::write(ADDR, vec![0x62, 0x02]),
+        I2cTransaction::write(ADDR, vec![0x0E, 0x00]),
+        I2cTransaction::write(ADDR, vec![0x0F, 0x00]),
+    ];
+
+    let mut i2c = I2cMock::new(&expectations);
+    let mut config = Config::new();
+    config.temp_external(true);
+    let dps = DPS3xx::new(i2c.clone(), ADDR, &config).unwrap();
+
+    assert!(dps.start_init().is_ok());
+    i2c.done();
+}
+
+#[test]
 fn test_start_init_rejects_wrong_product_family() {
     let expectations = [I2cTransaction::write_read(
         ADDR,
@@ -502,6 +669,45 @@ fn test_start_init_rejects_wrong_product_family() {
 
     assert!(dps.start_init().is_err());
     i2c.done();
+}
+
+#[test]
+fn test_poll_init_stays_ready_after_completion() {
+    let expectations = [
+        I2cTransaction::write_read(ADDR, vec![Register::PROD_ID.addr()], vec![0x10]),
+        I2cTransaction::write_read(ADDR, vec![Register::PRS_CFG.addr()], vec![0x00]),
+        I2cTransaction::write(ADDR, vec![Register::PRS_CFG.addr(), 0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::TEMP_CFG.addr()], vec![0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::TMP_COEF_SRCE.addr()], vec![0x00]),
+        I2cTransaction::write(ADDR, vec![Register::TEMP_CFG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::CFG_REG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![0x0E, 0xA5]),
+        I2cTransaction::write(ADDR, vec![0x0F, 0x96]),
+        I2cTransaction::write(ADDR, vec![0x62, 0x02]),
+        I2cTransaction::write(ADDR, vec![0x0E, 0x00]),
+        I2cTransaction::write(ADDR, vec![0x0F, 0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x40]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x02]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x60]),
+        I2cTransaction::write_read(ADDR, vec![Register::TMP_B2.addr()], vec![0x00, 0x00, 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x00]),
+    ];
+
+    let mut i2c = I2cMock::new(&expectations);
+    let config = Config::new();
+    let dps = DPS3xx::new(i2c.clone(), ADDR, &config).unwrap();
+    let mut dps = dps.start_init().unwrap();
+
+    poll_init_ready(&mut dps);
+    assert!(matches!(dps.poll_init().unwrap(), InitPoll::Ready));
+    i2c.done();
+}
+
+#[test]
+fn test_error_from_i2c_error() {
+    let err: Error<()> = ().into();
+    assert!(matches!(err, Error::I2CError(())));
 }
 
 #[test]
