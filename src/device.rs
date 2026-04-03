@@ -469,8 +469,8 @@ where
         let new_temp_cfg = tmp_cfg_value(temp_cfg, &config, coef_source);
         self.write_reg(Register::TEMP_CFG, new_temp_cfg)?;
 
-        let temp_shift = config.temp_shift || temp_res > TemperatureResolution::_8_SAMPLES as u8;
-        let pres_shift = config.pres_shift || pressure_res > PressureResolution::_8_SAMPLES as u8;
+        let temp_shift = config.temp_shift || temp_res > TemperatureResolution::Samples8 as u8;
+        let pres_shift = config.pres_shift || pressure_res > PressureResolution::Samples8 as u8;
 
         let cfg = cfg_reg_value(&config, temp_shift, pres_shift);
 

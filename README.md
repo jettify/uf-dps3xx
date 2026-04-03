@@ -28,7 +28,7 @@ cargo add uf-dps3xx
 The crate is built around a typed state machine:
 
 - `DPS3xx<_, Unconfigured>` after `new`
-- `DPS3xx<_, Configured>` after `init`/`init_and_calibrate`
+- `DPS3xx<_, Configured>` after `start_init` + `poll_init` + `finish_init`
 - `DPS3xx<_, Calibrated>` after calibration
 
 Minimal flow:

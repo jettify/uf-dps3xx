@@ -124,15 +124,15 @@ fn test_poll_init_pending_reports_configured_wait_time() {
     let mut i2c = I2cMock::new(&expectations);
     let mut config = Config::new();
     config
-        .temp_rate(TemperatureRate::_8_SPS)
-        .temp_res(TemperatureResolution::_16_SAMPLES);
+        .temp_rate(TemperatureRate::Sps8)
+        .temp_res(TemperatureResolution::Samples16);
 
     let dps = DPS3xx::new(i2c.clone(), ADDR, &config).unwrap();
     let mut dps = dps.start_init().unwrap();
 
     let expected_wait = calc_total_wait_ms(
-        TemperatureRate::_8_SPS as u8,
-        TemperatureResolution::_16_SAMPLES as u8,
+        TemperatureRate::Sps8 as u8,
+        TemperatureResolution::Samples16 as u8,
     );
 
     assert!(matches!(
@@ -736,10 +736,10 @@ fn test_start_measurement_rejects_background_busytime_overflow() {
     let mut i2c = I2cMock::new(&expectations);
     let mut config = Config::new();
     config
-        .temp_rate(TemperatureRate::_128_SPS)
-        .temp_res(TemperatureResolution::_128_SAMPLES)
-        .pres_rate(PressureRate::_128_SPS)
-        .pres_res(PressureResolution::_128_SAMPLES);
+        .temp_rate(TemperatureRate::Sps128)
+        .temp_res(TemperatureResolution::Samples128)
+        .pres_rate(PressureRate::Sps128)
+        .pres_res(PressureResolution::Samples128);
 
     let dps = DPS3xx::new(i2c.clone(), ADDR, &config).unwrap();
     let mut dps = dps.start_init().unwrap();

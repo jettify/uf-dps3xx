@@ -40,7 +40,7 @@ fmt:
 [group('lint')]
 lint:
   cargo check
-  cargo clippy --all -- -D warnings
+  cargo clippy --lib --all-features -- -D warnings
 
 # Lint source code with strict linter
 [group('lint')]
@@ -70,7 +70,7 @@ cov:
 # Run same testing commands as on CI server
 [group('test')]
 ci:
-  cargo clippy --all -- -D warnings
+  cargo clippy --lib --all-features -- -D warnings
   cargo build
   cargo test --all-features
   cargo test --examples

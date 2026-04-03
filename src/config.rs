@@ -1,4 +1,3 @@
-#![allow(non_camel_case_types)]
 /// Pressure rate
 #[repr(u8)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -6,14 +5,14 @@
 pub enum PressureRate {
     //  See P.9 of manual
     #[default]
-    _1_SPS = 0b000,
-    _2_SPS = 0b001,
-    _4_SPS = 0b010,
-    _8_SPS = 0b011,
-    _16_SPS = 0b100,
-    _32_SPS = 0b101,
-    _64_SPS = 0b110,
-    _128_SPS = 0b111,
+    Sps1 = 0b000,
+    Sps2 = 0b001,
+    Sps4 = 0b010,
+    Sps8 = 0b011,
+    Sps16 = 0b100,
+    Sps32 = 0b101,
+    Sps64 = 0b110,
+    Sps128 = 0b111,
 }
 
 impl PressureRate {
@@ -35,14 +34,14 @@ impl From<PressureRate> for u8 {
 pub enum PressureResolution {
     // See section 8.3, PM_RC field
     #[default]
-    _1_SAMPLES = 0b000,
-    _2_SAMPLES = 0b001,
-    _4_SAMPLES = 0b010,
-    _8_SAMPLES = 0b011,
-    _16_SAMPLES = 0b100,
-    _32_SAMPLES = 0b101,
-    _64_SAMPLES = 0b110,
-    _128_SAMPLES = 0b111, // Available for measurements in background mode only
+    Samples1 = 0b000,
+    Samples2 = 0b001,
+    Samples4 = 0b010,
+    Samples8 = 0b011,
+    Samples16 = 0b100,
+    Samples32 = 0b101,
+    Samples64 = 0b110,
+    Samples128 = 0b111, // Available for measurements in background mode only
 }
 
 impl PressureResolution {
@@ -64,14 +63,14 @@ impl From<PressureResolution> for u8 {
 pub enum TemperatureRate {
     // See section 8.4 Temperature Configuration, TMP_RATE
     #[default]
-    _1_SPS = 0b000,
-    _2_SPS = 0b001,
-    _4_SPS = 0b010,
-    _8_SPS = 0b011,
-    _16_SPS = 0b100,
-    _32_SPS = 0b101,
-    _64_SPS = 0b110,
-    _128_SPS = 0b111, // Applicable for measurements in Background mode only
+    Sps1 = 0b000,
+    Sps2 = 0b001,
+    Sps4 = 0b010,
+    Sps8 = 0b011,
+    Sps16 = 0b100,
+    Sps32 = 0b101,
+    Sps64 = 0b110,
+    Sps128 = 0b111, // Applicable for measurements in Background mode only
 }
 
 impl TemperatureRate {
@@ -93,14 +92,14 @@ impl From<TemperatureRate> for u8 {
 pub enum TemperatureResolution {
     // See section 8.4 Temperature Configuration, TMP_PRC
     #[default]
-    _1_SAMPLES = 0b000,
-    _2_SAMPLES = 0b001,
-    _4_SAMPLES = 0b010,
-    _8_SAMPLES = 0b011,
-    _16_SAMPLES = 0b100,
-    _32_SAMPLES = 0b101,
-    _64_SAMPLES = 0b110,
-    _128_SAMPLES = 0b111,
+    Samples1 = 0b000,
+    Samples2 = 0b001,
+    Samples4 = 0b010,
+    Samples8 = 0b011,
+    Samples16 = 0b100,
+    Samples32 = 0b101,
+    Samples64 = 0b110,
+    Samples128 = 0b111,
 }
 
 impl TemperatureResolution {
@@ -245,14 +244,14 @@ mod tests {
 
     #[test]
     fn test_enum_helpers_and_default() {
-        assert_eq!(PressureRate::_64_SPS.val(), 0b110);
-        assert_eq!(u8::from(PressureRate::_128_SPS), 0b111);
-        assert_eq!(PressureResolution::_32_SAMPLES.val(), 0b101);
-        assert_eq!(u8::from(PressureResolution::_64_SAMPLES), 0b110);
-        assert_eq!(TemperatureRate::_16_SPS.val(), 0b100);
-        assert_eq!(u8::from(TemperatureRate::_8_SPS), 0b011);
-        assert_eq!(TemperatureResolution::_2_SAMPLES.val(), 0b001);
-        assert_eq!(u8::from(TemperatureResolution::_128_SAMPLES), 0b111);
+        assert_eq!(PressureRate::Sps64.val(), 0b110);
+        assert_eq!(u8::from(PressureRate::Sps128), 0b111);
+        assert_eq!(PressureResolution::Samples32.val(), 0b101);
+        assert_eq!(u8::from(PressureResolution::Samples64), 0b110);
+        assert_eq!(TemperatureRate::Sps16.val(), 0b100);
+        assert_eq!(u8::from(TemperatureRate::Sps8), 0b011);
+        assert_eq!(TemperatureResolution::Samples2.val(), 0b001);
+        assert_eq!(u8::from(TemperatureResolution::Samples128), 0b111);
 
         let cfg = Config::default();
         assert_eq!(cfg.pres_rate, None);
@@ -282,10 +281,10 @@ mod tests {
     #[test]
     fn test_config_builder_methods() {
         let mut cfg = Config::new();
-        cfg.pres_rate(PressureRate::_16_SPS)
-            .pres_res(PressureResolution::_8_SAMPLES)
-            .temp_rate(TemperatureRate::_32_SPS)
-            .temp_res(TemperatureResolution::_64_SAMPLES)
+        cfg.pres_rate(PressureRate::Sps16)
+            .pres_res(PressureResolution::Samples8)
+            .temp_rate(TemperatureRate::Sps32)
+            .temp_res(TemperatureResolution::Samples64)
             .temp_external(true)
             .int_hl(true)
             .int_fifo(true)
@@ -297,10 +296,10 @@ mod tests {
             .spi_mode(true)
             .init_timeout_ms(10_000);
 
-        assert_eq!(cfg.pres_rate, Some(PressureRate::_16_SPS));
-        assert_eq!(cfg.pres_res, Some(PressureResolution::_8_SAMPLES));
-        assert_eq!(cfg.temp_rate, Some(TemperatureRate::_32_SPS));
-        assert_eq!(cfg.temp_res, Some(TemperatureResolution::_64_SAMPLES));
+        assert_eq!(cfg.pres_rate, Some(PressureRate::Sps16));
+        assert_eq!(cfg.pres_res, Some(PressureResolution::Samples8));
+        assert_eq!(cfg.temp_rate, Some(TemperatureRate::Sps32));
+        assert_eq!(cfg.temp_res, Some(TemperatureResolution::Samples64));
         assert_eq!(cfg.temp_ext, Some(true));
         assert!(cfg.int_hl);
         assert!(!cfg.int_fifo);
