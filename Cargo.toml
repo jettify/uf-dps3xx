@@ -22,7 +22,6 @@ keywords = [
   "embedded-hal-driver",
   "pressure",
   "temperature",
-  "sensor",
   "DPS310",
   "DPS368",
 ]
