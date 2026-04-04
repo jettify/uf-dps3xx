@@ -3,7 +3,7 @@
 [![CI](https://github.com/jettify/uf-dps3xx/actions/workflows/CI.yml/badge.svg)](https://github.com/jettify/uf-dps3xx/actions/workflows/CI.yml)
 [![codecov](https://codecov.io/gh/jettify/uf-dps3xx/graph/badge.svg?token=XZK0JJQ9QN)](https://codecov.io/gh/jettify/uf-dps3xx)
 
-`uf-dps3xx` is a platform-agnostic, `no_std` driver for DPS3xx pressure and temperature sensors using `embedded-hal` I2C traits.
+`uf-dps3xx` is a platform-agnostic, `no_std` driver for `DPS310` or `DPS368` pressure and temperature sensors using `embedded-hal` I2C traits.
 
 SPI support may be added later (the sensor supports it, but this crate currently implements I2C only).
 
@@ -14,7 +14,7 @@ Add `uf-dps3xx` to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-uf-dps3xx = "*" # replace * by the latest version of the crate.
+uf-dps3xx = "0.1"
 ```
 
 Or use the command line:
@@ -49,6 +49,12 @@ where
     sensor.read_pressure_calibrated()
 }
 ```
+
+
+## Inspirations
+
+1. https://github.com/Infineon/arduino-xensiv-dps3xx
+2. https://github.com/dprotsiv/dps310-rs
 
 ## License
 

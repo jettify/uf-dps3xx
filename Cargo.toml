@@ -3,7 +3,7 @@ name = "uf-dps3xx"
 edition = "2021"
 version = "0.1.0"
 rust-version = "1.78.0"
-authors = ["Nickolai Novik <nickolainovik@gmail.com>"]
+authors = ["Mykola Novik <nickolainovik@gmail.com>"]
 description = "A platform agnostic driver for DPS3xx through I2C"
 
 readme = "README.md"
@@ -23,7 +23,8 @@ keywords = [
   "pressure",
   "temperature",
   "sensor",
-  "DPS3xx",
+  "DPS310",
+  "DPS368",
 ]
 categories = ["embedded", "hardware-support", "no-std"]
 license = "Apache-2.0"
