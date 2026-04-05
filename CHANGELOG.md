@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/jettify/uf-dps3xx/compare/v0.1.0...v0.1.1) - 2026-04-05
+
+### Other
+
+- Improve README information.
+- More badges to the readme.
+- release v0.1.0 ([#12](https://github.com/jettify/uf-dps3xx/issues/12))
+
 ## [0.1.0](https://github.com/jettify/uf-dps3xx/releases/tag/v0.1.0) - 2026-04-04
 
 ### Added
