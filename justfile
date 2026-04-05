@@ -74,3 +74,4 @@ ci:
   cargo build
   cargo test --all-features
   cargo test --examples
+  cargo check --manifest-path examples/tbs-lucid-h7/Cargo.toml --target thumbv7em-none-eabihf
