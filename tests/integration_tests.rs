@@ -1,4 +1,7 @@
-use embedded_hal::{delay::DelayNs, i2c::I2c};
+use embedded_hal::{
+    delay::DelayNs,
+    i2c::{ErrorKind, I2c},
+};
 use embedded_hal_mock::eh1::i2c::{Mock as I2cMock, Transaction as I2cTransaction};
 use uf_dps3xx::{
     calc_total_wait_ms, Config, Configured, DPS3xx, Error, InitInProgress, InitPoll, InitStage,
@@ -12,6 +15,34 @@ struct TestDelay;
 
 impl DelayNs for TestDelay {
     fn delay_ns(&mut self, _ns: u32) {}
+}
+
+fn start_init_transactions() -> Vec<I2cTransaction> {
+    vec![
+        I2cTransaction::write_read(ADDR, vec![Register::PROD_ID.addr()], vec![0x10]),
+        I2cTransaction::write_read(ADDR, vec![Register::PRS_CFG.addr()], vec![0x00]),
+        I2cTransaction::write(ADDR, vec![Register::PRS_CFG.addr(), 0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::TEMP_CFG.addr()], vec![0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::TMP_COEF_SRCE.addr()], vec![0x00]),
+        I2cTransaction::write(ADDR, vec![Register::TEMP_CFG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::CFG_REG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x00]),
+        I2cTransaction::write(ADDR, vec![0x0E, 0xA5]),
+        I2cTransaction::write(ADDR, vec![0x0F, 0x96]),
+        I2cTransaction::write(ADDR, vec![0x62, 0x02]),
+        I2cTransaction::write(ADDR, vec![0x0E, 0x00]),
+        I2cTransaction::write(ADDR, vec![0x0F, 0x00]),
+    ]
+}
+
+fn finish_init_transactions() -> Vec<I2cTransaction> {
+    vec![
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x40]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x02]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x60]),
+        I2cTransaction::write_read(ADDR, vec![Register::TMP_B2.addr()], vec![0x00, 0x00, 0x00]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x00]),
+    ]
 }
 
 fn finish_init<I2C>(dps: DPS3xx<I2C, InitInProgress>) -> DPS3xx<I2C, Configured>
@@ -209,10 +240,15 @@ fn test_read_calibration_coefficients_requires_coef_ready() {
     poll_init_ready(&mut dps);
     let dps = finish_init(dps);
 
-    assert!(matches!(
-        dps.read_calibration_coefficients(),
-        Err(Error::CoefficientsNotReady)
-    ));
+    match dps.read_calibration_coefficients() {
+        Ok(_) => {
+            panic!("read_calibration_coefficients should fail when coefficients are not ready")
+        }
+        Err(transition) => {
+            let (err, _) = transition.into_parts();
+            assert!(matches!(err, Error::CoefficientsNotReady));
+        }
+    }
     i2c.done();
 }
 
@@ -247,6 +283,128 @@ fn test_init_and_calibrate() {
     let mut delay = TestDelay;
 
     let _dps = dps.init_and_calibrate(&mut delay).unwrap();
+    i2c.done();
+}
+
+#[test]
+fn test_init_and_calibrate_recoverable() {
+    let mut expectations = start_init_transactions();
+    expectations.extend(finish_init_transactions());
+    expectations.extend([
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x80]),
+        I2cTransaction::write_read(ADDR, vec![Register::COEFF_REG_1.addr()], vec![0; 18]),
+    ]);
+
+    let mut i2c = I2cMock::new(&expectations);
+    let config = Config::new();
+    let dps = DPS3xx::new(i2c.clone(), ADDR, &config).unwrap();
+    let mut delay = TestDelay;
+
+    let _dps = dps.init_and_calibrate_recoverable(&mut delay).unwrap();
+    i2c.done();
+}
+
+#[test]
+fn test_init_and_calibrate_recoverable_timeout_waiting_init_complete() {
+    let mut expectations = start_init_transactions();
+    expectations.push(I2cTransaction::write_read(
+        ADDR,
+        vec![Register::MEAS_CFG.addr()],
+        vec![0x00],
+    ));
+
+    let mut i2c = I2cMock::new(&expectations);
+    let mut config = Config::new();
+    config.init_timeout_ms(5);
+
+    let dps = DPS3xx::new(i2c.clone(), ADDR, &config).unwrap();
+    let mut delay = TestDelay;
+    let err = dps
+        .init_and_calibrate_recoverable(&mut delay)
+        .unwrap_err()
+        .into_error();
+
+    assert!(matches!(
+        err,
+        Error::InitTimeout(InitStage::WaitingInitComplete)
+    ));
+    i2c.done();
+}
+
+#[test]
+fn test_init_and_calibrate_recoverable_timeout_waiting_init_temp_ready() {
+    let mut expectations = start_init_transactions();
+    expectations.extend([
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x40]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x02]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x40]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x40]),
+    ]);
+
+    let mut i2c = I2cMock::new(&expectations);
+    let mut config = Config::new();
+    config.init_timeout_ms(30);
+
+    let dps = DPS3xx::new(i2c.clone(), ADDR, &config).unwrap();
+    let mut delay = TestDelay;
+    let err = dps
+        .init_and_calibrate_recoverable(&mut delay)
+        .unwrap_err()
+        .into_error();
+
+    assert!(matches!(
+        err,
+        Error::InitTimeout(InitStage::WaitingInitTempReady)
+    ));
+    i2c.done();
+}
+
+#[test]
+fn test_init_and_calibrate_recoverable_timeout_waiting_coef_ready() {
+    let mut expectations = start_init_transactions();
+    expectations.extend(finish_init_transactions());
+    expectations.extend([
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x00]),
+    ]);
+
+    let mut i2c = I2cMock::new(&expectations);
+    let mut config = Config::new();
+    config.init_timeout_ms(30);
+
+    let dps = DPS3xx::new(i2c.clone(), ADDR, &config).unwrap();
+    let mut delay = TestDelay;
+    let err = dps
+        .init_and_calibrate_recoverable(&mut delay)
+        .unwrap_err()
+        .into_error();
+
+    assert!(matches!(
+        err,
+        Error::InitTimeout(InitStage::WaitingCoefReady)
+    ));
+    i2c.done();
+}
+
+#[test]
+fn test_init_and_calibrate_recoverable_returns_coef_ready_i2c_error() {
+    let mut expectations = start_init_transactions();
+    expectations.extend(finish_init_transactions());
+    expectations.push(
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x00])
+            .with_error(ErrorKind::Other),
+    );
+
+    let mut i2c = I2cMock::new(&expectations);
+    let config = Config::new();
+    let dps = DPS3xx::new(i2c.clone(), ADDR, &config).unwrap();
+    let mut delay = TestDelay;
+    let err = dps
+        .init_and_calibrate_recoverable(&mut delay)
+        .unwrap_err()
+        .into_error();
+
+    assert!(matches!(err, Error::I2CError(ErrorKind::Other)));
     i2c.done();
 }
 
@@ -711,15 +869,32 @@ fn test_error_from_i2c_error() {
 }
 
 #[test]
-fn test_start_measurement_rejects_background_busytime_overflow() {
+fn test_validate_config_rejects_background_busytime_overflow() {
+    let mut i2c = I2cMock::new(&[]);
+    let mut config = Config::new();
+    config
+        .temp_rate(TemperatureRate::Sps128)
+        .temp_res(TemperatureResolution::Samples128)
+        .pres_rate(PressureRate::Sps128)
+        .pres_res(PressureResolution::Samples128);
+
+    assert!(matches!(
+        DPS3xx::new(i2c.clone(), ADDR, &config),
+        Err(Error::InvalidConfigBusyTime(_))
+    ));
+    i2c.done();
+}
+
+#[test]
+fn test_validate_config_allows_single_modes_when_combined_busytime_overflows() {
     let expectations = [
         I2cTransaction::write_read(ADDR, vec![Register::PROD_ID.addr()], vec![0x10]),
         I2cTransaction::write_read(ADDR, vec![Register::PRS_CFG.addr()], vec![0x00]),
-        I2cTransaction::write(ADDR, vec![Register::PRS_CFG.addr(), 0x77]),
+        I2cTransaction::write(ADDR, vec![Register::PRS_CFG.addr(), 0x71]),
         I2cTransaction::write_read(ADDR, vec![Register::TEMP_CFG.addr()], vec![0x00]),
         I2cTransaction::write_read(ADDR, vec![Register::TMP_COEF_SRCE.addr()], vec![0x00]),
-        I2cTransaction::write(ADDR, vec![Register::TEMP_CFG.addr(), 0x77]),
-        I2cTransaction::write(ADDR, vec![Register::CFG_REG.addr(), 0x0C]),
+        I2cTransaction::write(ADDR, vec![Register::TEMP_CFG.addr(), 0x71]),
+        I2cTransaction::write(ADDR, vec![Register::CFG_REG.addr(), 0x00]),
         I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x00]),
         I2cTransaction::write(ADDR, vec![0x0E, 0xA5]),
         I2cTransaction::write(ADDR, vec![0x0F, 0x96]),
@@ -731,21 +906,29 @@ fn test_start_measurement_rejects_background_busytime_overflow() {
         I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x60]),
         I2cTransaction::write_read(ADDR, vec![Register::TMP_B2.addr()], vec![0x00, 0x00, 0x00]),
         I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x00]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x00]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x05]),
+        I2cTransaction::write_read(ADDR, vec![Register::MEAS_CFG.addr()], vec![0x05]),
+        I2cTransaction::write(ADDR, vec![Register::MEAS_CFG.addr(), 0x06]),
     ];
 
     let mut i2c = I2cMock::new(&expectations);
     let mut config = Config::new();
     config
         .temp_rate(TemperatureRate::Sps128)
-        .temp_res(TemperatureResolution::Samples128)
+        .temp_res(TemperatureResolution::Samples2)
         .pres_rate(PressureRate::Sps128)
-        .pres_res(PressureResolution::Samples128);
+        .pres_res(PressureResolution::Samples2);
 
     let dps = DPS3xx::new(i2c.clone(), ADDR, &config).unwrap();
     let mut dps = dps.start_init().unwrap();
     poll_init_ready(&mut dps);
     let mut dps = finish_init(dps);
 
+    dps.start_measurement(MeasurementMode::BackgroundPressure)
+        .unwrap();
+    dps.start_measurement(MeasurementMode::BackgroundTemperature)
+        .unwrap();
     assert!(matches!(
         dps.start_measurement(MeasurementMode::BackgroundPressureAndTemperature),
         Err(Error::BusyTimeExceeded)

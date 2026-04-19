@@ -52,7 +52,7 @@ async fn init_and_calibrate_async(
         .finish_init()
         .unwrap_or_else(|_| panic!("dps init not ready"));
     wait_until_ready(&mut dps, DPS3xx::coef_ready).await?;
-    dps.read_calibration_coefficients()
+    Ok(dps.read_calibration_coefficients()?)
 }
 
 #[embassy_executor::task]
