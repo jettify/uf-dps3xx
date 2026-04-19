@@ -53,8 +53,9 @@ impl IsConfigured for Calibrated {}
 pub enum Error<I2CError> {
     /// I2C Interface Error
     I2CError(I2CError),
-    InvalidProductId,
+    UnexpectedProductId(u8),
     BusyTimeExceeded,
+    InvalidConfigBusyTime(MeasurementMode),
     CoefficientsNotReady,
     InitTimeout(InitStage),
     InvalidOversampling(u8),
@@ -108,6 +109,46 @@ impl<I2CError> From<I2CError> for Error<I2CError> {
     }
 }
 
+pub struct TransitionError<I2C, I2CError, S> {
+    error: Error<I2CError>,
+    state: DPS3xx<I2C, S>,
+}
+
+impl<I2C, I2CError, S> TransitionError<I2C, I2CError, S> {
+    pub fn into_parts(self) -> (Error<I2CError>, DPS3xx<I2C, S>) {
+        (self.error, self.state)
+    }
+
+    pub fn into_error(self) -> Error<I2CError> {
+        self.error
+    }
+
+    fn with_state(err: Error<I2CError>, dps: DPS3xx<I2C, S>) -> Self {
+        Self {
+            error: err,
+            state: dps,
+        }
+    }
+}
+
+impl<I2C, I2CError, S> From<TransitionError<I2C, I2CError, S>> for Error<I2CError> {
+    fn from(value: TransitionError<I2C, I2CError, S>) -> Self {
+        value.into_error()
+    }
+}
+
+impl<I2C, I2CError, S> core::fmt::Debug for TransitionError<I2C, I2CError, S>
+where
+    Error<I2CError>: core::fmt::Debug,
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("TransitionError")
+            .field("error", &self.error)
+            .field("state", &"<DPS3xx>")
+            .finish()
+    }
+}
+
 pub struct DPS3xx<I2C, S> {
     bus: I2cBus<I2C>,
     coeffs: CalibrationCoeffs,
@@ -117,11 +158,24 @@ pub struct DPS3xx<I2C, S> {
     _state: PhantomData<S>,
 }
 
+impl<I2C, S> core::fmt::Debug for DPS3xx<I2C, S> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("DPS3xx")
+            .field("coeffs", &self.coeffs)
+            .field("config", &self.config)
+            .field("init_ready", &self.init_ready)
+            .field("init_temp_started", &self.init_temp_started)
+            .field("state", &core::any::type_name::<S>())
+            .finish()
+    }
+}
+
 impl<I2C, I2CError> DPS3xx<I2C, Unconfigured>
 where
     I2C: I2c<Error = I2CError>,
 {
     pub fn new(i2c: I2C, address: u8, config: &Config) -> Result<Self, Error<I2CError>> {
+        Self::validate_config(config)?;
         let dps3xx = Self {
             bus: I2cBus::new(i2c, address),
             coeffs: CalibrationCoeffs::default(),
@@ -133,10 +187,11 @@ where
         Ok(dps3xx)
     }
 
-    pub fn start_init(mut self) -> Result<DPS3xx<I2C, InitInProgress>, Error<I2CError>> {
+    pub fn try_start_init(&mut self) -> Result<(), Error<I2CError>> {
+        Self::validate_config(&self.config)?;
         let id = self.get_product_id()?;
         if (id & 0xF0) != (PRODUCT_ID & 0xF0) {
-            return Err(Error::InvalidProductId);
+            return Err(Error::UnexpectedProductId(id));
         }
         self.apply_config()?;
         self.standby()?;
@@ -145,7 +200,15 @@ where
 
         self.init_ready = false;
         self.init_temp_started = false;
+        Ok(())
+    }
 
+    pub fn start_init(
+        mut self,
+    ) -> Result<DPS3xx<I2C, InitInProgress>, TransitionError<I2C, I2CError, Unconfigured>> {
+        if let Err(err) = self.try_start_init() {
+            return Err(TransitionError::with_state(err, self));
+        }
         Ok(self.into_state())
     }
 
@@ -156,17 +219,13 @@ where
     where
         D: DelayNs,
     {
-        let mut dps = self.start_init()?;
+        let mut dps = self.start_init().map_err(TransitionError::into_error)?;
         let mut timeout_remaining_ms = dps.config.init_timeout_ms;
 
         let mut dps = loop {
             match dps.poll_init()? {
                 InitPoll::Pending(wait_ms) => {
-                    let stage = if dps.init_temp_started {
-                        InitStage::WaitingInitTempReady
-                    } else {
-                        InitStage::WaitingInitComplete
-                    };
+                    let stage = dps.init_pending_stage();
                     Self::delay_or_timeout(delay, &mut timeout_remaining_ms, wait_ms, stage)?;
                 }
                 InitPoll::Ready => match dps.finish_init() {
@@ -186,6 +245,58 @@ where
         }
 
         dps.read_calibration_coefficients_unchecked()
+    }
+
+    pub fn init_and_calibrate_recoverable<D>(
+        self,
+        delay: &mut D,
+    ) -> Result<DPS3xx<I2C, Calibrated>, TransitionError<I2C, I2CError, Unconfigured>>
+    where
+        D: DelayNs,
+    {
+        let mut dps = self.start_init()?;
+        let mut timeout_remaining_ms = dps.config.init_timeout_ms;
+
+        let mut dps = loop {
+            match dps.poll_init() {
+                Ok(InitPoll::Pending(wait_ms)) => {
+                    let stage = dps.init_pending_stage();
+                    if let Err(err) =
+                        Self::delay_or_timeout(delay, &mut timeout_remaining_ms, wait_ms, stage)
+                    {
+                        return Err(TransitionError::with_state(err, dps.into_state()));
+                    }
+                }
+                Ok(InitPoll::Ready) => match dps.finish_init() {
+                    Ok(dps) => break dps,
+                    Err(unfinished) => dps = unfinished,
+                },
+                Err(err) => return Err(TransitionError::with_state(err, dps.into_state())),
+            }
+        };
+
+        loop {
+            match dps.coef_ready() {
+                Ok(true) => break,
+                Ok(false) => {}
+                Err(err) => return Err(TransitionError::with_state(err, dps.into_state())),
+            }
+
+            if let Err(err) = Self::delay_or_timeout(
+                delay,
+                &mut timeout_remaining_ms,
+                10,
+                InitStage::WaitingCoefReady,
+            ) {
+                return Err(TransitionError::with_state(err, dps.into_state()));
+            }
+        }
+
+        if let Err(err) = dps.try_read_calibration_coefficients_unchecked() {
+            return Err(TransitionError::with_state(err, dps.into_state()));
+        }
+
+        Ok(dps.into_state())
     }
 
     fn delay_or_timeout<D>(
@@ -210,13 +321,6 @@ impl<I2C, I2CError> DPS3xx<I2C, InitInProgress>
 where
     I2C: I2c<Error = I2CError>,
 {
-    fn init_wait_ms(&self) -> u32 {
-        calc_total_wait_ms(
-            self.config.temp_rate.unwrap_or_default() as u8,
-            self.config.temp_res.unwrap_or_default() as u8,
-        )
-    }
-
     pub fn poll_init(&mut self) -> Result<InitPoll, Error<I2CError>> {
         if self.init_ready {
             return Ok(InitPoll::Ready);
@@ -265,24 +369,26 @@ where
     /// Taken from official Arduino library, see <https://github.com/Infineon/DPS3xx-Pressure-Sensor/blob/888200c7efd8edb19ce69a2144e28ba31cdad449/src/Dps310.cpp#L89>
     ///
     /// See Sec 8.11
-    pub fn read_calibration_coefficients(
-        mut self,
-    ) -> Result<DPS3xx<I2C, Calibrated>, Error<I2CError>> {
+    pub fn try_read_calibration_coefficients(&mut self) -> Result<(), Error<I2CError>> {
         if !self.coef_ready()? {
             return Err(Error::CoefficientsNotReady);
         }
+        self.try_read_calibration_coefficients_unchecked()
+    }
 
-        self.read_calibration_coefficients_unchecked()
+    pub fn read_calibration_coefficients(
+        mut self,
+    ) -> Result<DPS3xx<I2C, Calibrated>, TransitionError<I2C, I2CError, Configured>> {
+        if let Err(err) = self.try_read_calibration_coefficients() {
+            return Err(TransitionError::with_state(err, self));
+        }
+        Ok(self.into_state())
     }
 
     fn read_calibration_coefficients_unchecked(
         mut self,
     ) -> Result<DPS3xx<I2C, Calibrated>, Error<I2CError>> {
-        let mut bytes: [u8; 18] = [0; 18];
-        self.bus.read_many(Register::COEFF_REG_1, &mut bytes)?;
-
-        process_calibration_coefficients(&mut self.coeffs, &mut bytes);
-
+        self.try_read_calibration_coefficients_unchecked()?;
         Ok(self.into_state())
     }
 }
@@ -291,6 +397,40 @@ impl<I2C, I2CError, S> DPS3xx<I2C, S>
 where
     I2C: I2c<Error = I2CError>,
 {
+    pub fn validate_config(config: &Config) -> Result<(), Error<I2CError>> {
+        let temp_rate = config.temp_rate.unwrap_or_default() as u8;
+        let temp_res = config.temp_res.unwrap_or_default() as u8;
+        let pres_rate = config.pres_rate.unwrap_or_default() as u8;
+        let pres_res = config.pres_res.unwrap_or_default() as u8;
+
+        if calc_busy_time_units(pres_rate, pres_res) >= MAX_BUSYTIME_UNITS {
+            return Err(Error::InvalidConfigBusyTime(
+                MeasurementMode::BackgroundPressure,
+            ));
+        }
+        if calc_busy_time_units(temp_rate, temp_res) >= MAX_BUSYTIME_UNITS {
+            return Err(Error::InvalidConfigBusyTime(
+                MeasurementMode::BackgroundTemperature,
+            ));
+        }
+        Ok(())
+    }
+
+    fn init_wait_ms(&self) -> u32 {
+        calc_total_wait_ms(
+            self.config.temp_rate.unwrap_or_default() as u8,
+            self.config.temp_res.unwrap_or_default() as u8,
+        )
+    }
+
+    fn init_pending_stage(&self) -> InitStage {
+        if self.init_temp_started {
+            InitStage::WaitingInitTempReady
+        } else {
+            InitStage::WaitingInitComplete
+        }
+    }
+
     fn max_busy_time_exceeded(&self, mode: MeasurementMode) -> bool {
         let temp_rate = self.config.temp_rate.unwrap_or_default() as u8;
         let temp_res = self.config.temp_res.unwrap_or_default() as u8;
@@ -449,6 +589,13 @@ impl<I2C, S, I2CError> DPS3xx<I2C, S>
 where
     I2C: I2c<Error = I2CError>,
 {
+    fn try_read_calibration_coefficients_unchecked(&mut self) -> Result<(), Error<I2CError>> {
+        let mut bytes: [u8; 18] = [0; 18];
+        self.bus.read_many(Register::COEFF_REG_1, &mut bytes)?;
+        process_calibration_coefficients(&mut self.coeffs, &mut bytes);
+        Ok(())
+    }
+
     fn apply_config(&mut self) -> Result<(), Error<I2CError>> {
         let config = self.config;
         let prs_cfg = self.read_reg(Register::PRS_CFG)?;
@@ -491,14 +638,15 @@ where
     }
 
     /// Issue a full reset and fifo flush
-    pub fn reset(mut self) -> Result<DPS3xx<I2C, Unconfigured>, Error<I2CError>> {
-        self.write_reg(Register::RESET, 0b1000_1001)?;
+    pub fn reset(mut self) -> Result<DPS3xx<I2C, Unconfigured>, TransitionError<I2C, I2CError, S>> {
+        if let Err(err) = self.write_reg(Register::RESET, 0b1000_1001) {
+            return Err(TransitionError::with_state(err, self));
+        }
         self.init_ready = false;
         self.init_temp_started = false;
 
         Ok(self.into_state())
     }
-
     fn write_reg(&mut self, reg: Register, value: u8) -> Result<(), Error<I2CError>> {
         self.bus.write_reg(reg, value)?;
         Ok(())

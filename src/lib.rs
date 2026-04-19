@@ -35,6 +35,7 @@ pub use device::{
     IsConfigured,
     MeasurementMode,
     Status,
+    TransitionError,
     Unconfigured,
     BUSYTIME_FAILSAFE_MS,
     BUSYTIME_SCALING,

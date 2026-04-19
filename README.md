@@ -118,8 +118,9 @@ The `try_*` methods return `nb::Error::WouldBlock` until the sensor reports data
 
 Common errors returned by the crate:
 
-- `InvalidProductId` when the sensor ID does not match the expected `DPS3xx` family value
-- `BusyTimeExceeded` when the configured oversampling would exceed the safe measurement window
+- `UnexpectedProductId(u8)` when the sensor ID does not match the expected `DPS3xx` family value
+- `InvalidConfigBusyTime` when configuration would violate busy-time constraints
+- `BusyTimeExceeded` when a requested runtime measurement mode is unsafe for the active config
 - `CoefficientsNotReady` when calibration data is read too early
 - `InitTimeout` when initialization takes longer than `Config::init_timeout_ms`
 - `InvalidOversampling` when the register state contains an unsupported oversampling value
