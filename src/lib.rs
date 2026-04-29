@@ -13,32 +13,14 @@ mod device_internal;
 mod register;
 
 pub use config::{
-    //
-    Config,
-    PressureRate,
-    PressureResolution,
-    TemperatureRate,
-    TemperatureResolution,
+    Config, FifoConfig, InterruptConfig, MeasurementConfig, Oversampling, Rate, TemperatureSource,
 };
 pub use device::{
-    //
-    calc_busy_time_ms,
-    calc_busy_time_units,
-    calc_total_wait_ms,
-    Calibrated,
-    Configured,
-    DPS3xx,
-    Error,
-    InitInProgress,
-    InitPoll,
-    InitStage,
-    IsConfigured,
-    MeasurementMode,
-    Status,
-    TransitionError,
-    Unconfigured,
-    BUSYTIME_FAILSAFE_MS,
-    BUSYTIME_SCALING,
-    MAX_BUSYTIME_UNITS,
+    ConfigError, Dps3xx, Error, I2cAddress, Init, InitStage, Poll, RawSample, Ready, Sample,
+    Status, TransitionError, Uninit,
 };
-pub use register::Register;
+
+pub mod advanced {
+    pub use crate::device_internal::{calc_busy_time_ms, calc_total_wait_ms, BUSYTIME_FAILSAFE_MS};
+    pub use crate::register::Register;
+}
