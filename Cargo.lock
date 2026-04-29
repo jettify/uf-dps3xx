@@ -250,7 +250,6 @@ dependencies = [
  "defmt",
  "embedded-hal 1.0.0",
  "embedded-hal-mock",
- "nb 1.1.0",
 ]
 
 [[package]]
