@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/jettify/uf-dps3xx/compare/v0.1.1...v0.2.0) - 2026-04-29
+
+### Added
+
+- Simplify API significantly, expose only two states. ([#17](https://github.com/jettify/uf-dps3xx/issues/17))
+
+### Fixed
+
+- [**breaking**] Make state transition recoverable. ([#15](https://github.com/jettify/uf-dps3xx/issues/15))
+
 ## [0.1.1](https://github.com/jettify/uf-dps3xx/compare/v0.1.0...v0.1.1) - 2026-04-05
 
 ### Other
