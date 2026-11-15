@@ -37,6 +37,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v6
-    - uses: dtolnay/rust-toolchain@1.81.0
+    - uses: dtolnay/rust-toolchain@1.95.0
     - name: Check minimum supported Rust version
       run: cargo check --locked --all-features
