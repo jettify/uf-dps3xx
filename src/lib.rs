@@ -1,8 +1,4 @@
 #![no_std]
-#![allow(
-    clippy::needless_doctest_main,
-    reason = "This is readme example, not doctest"
-)]
 #![doc = include_str!("../README.md")]
 
 mod bus;
@@ -13,11 +9,12 @@ mod device_internal;
 mod register;
 
 pub use config::{
-    Config, FifoConfig, InterruptConfig, MeasurementConfig, Oversampling, Rate, TemperatureSource,
+    Config, ConfigError, FifoConfig, InterruptConfig, MeasurementConfig, Mode, Oversampling, Rate,
+    TemperatureSource,
 };
 pub use device::{
-    ConfigError, Dps3xx, Error, I2cAddress, Init, InitStage, Poll, RawSample, Ready, Sample,
-    Status, TransitionError, Uninit,
+    Dps3xx, Error, FifoEntry, FifoStatus, I2cAddress, InitStage, InterruptStatus, Poll, RawSample,
+    Sample, Status,
 };
 
 pub mod advanced {

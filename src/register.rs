@@ -1,4 +1,7 @@
-#[allow(non_camel_case_types)]
+#[expect(
+    non_camel_case_types,
+    reason = "register names match DPS3xx datasheet mnemonics"
+)]
 #[repr(u8)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -40,7 +43,8 @@ pub enum Register {
 }
 
 impl Register {
-    pub fn addr(self) -> u8 {
+    #[must_use]
+    pub const fn addr(self) -> u8 {
         self as u8
     }
 }
