@@ -65,7 +65,10 @@ pub(crate) const fn tmp_cfg_value(config: &Config, coef_source_ext: bool) -> u8 
 }
 
 #[must_use]
-pub(crate) const fn cfg_reg_value(config: &Config, temp_shift: bool, pres_shift: bool) -> u8 {
+pub(crate) const fn cfg_reg_value(config: &Config) -> u8 {
+    let temp_shift = config.temperature.oversampling.reg() > Oversampling::X8.reg();
+    let pres_shift = config.pressure.oversampling.reg() > Oversampling::X8.reg();
+
     ((config.interrupts.active_high as u8) << 7)
         | ((config.fifo.interrupt_on_full as u8) << 6)
         | ((config.interrupts.temperature_ready as u8) << 5)

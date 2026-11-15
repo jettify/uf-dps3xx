@@ -1,6 +1,5 @@
 use crate::calibration::{
-    calibrate_pressure, calibrate_temperature, decode_i24, i24_to_f32,
-    process_calibration_coefficients, CalibrationCoeffs,
+    calibrate_pressure, calibrate_temperature, decode_i24, i24_to_f32, CalibrationCoeffs,
 };
 use crate::config::{Config, ConfigError, Mode, Oversampling, Rate};
 use crate::device_internal::{
@@ -86,14 +85,7 @@ impl<I2cError: core::fmt::Display> core::fmt::Display for Error<I2cError> {
         match self {
             Self::Bus(err) => write!(f, "I2C bus error: {err}"),
             Self::InvalidDevice { id } => write!(f, "invalid DPS3xx product ID: 0x{id:02x}"),
-            Self::InvalidConfig {
-                reason: ConfigError::MeasurementBusyTimeExceeded,
-            } => f.write_str("invalid config: measurement busy time exceeded"),
-            Self::InvalidConfig {
-                reason: ConfigError::TemperatureSourceMismatch,
-            } => {
-                f.write_str("invalid config: temperature source does not match factory calibration")
-            }
+            Self::InvalidConfig { reason } => write!(f, "invalid config: {reason}"),
             Self::Timeout { stage } => write!(f, "initialization timeout at stage {stage:?}"),
             Self::NotInitialized => f.write_str("sensor is not initialized"),
             Self::NoSampleReady => f.write_str("no sensor sample ready"),
@@ -845,14 +837,8 @@ mod implementation {
                 tmp_cfg_value(config, self.coef_source_ext),
             )
             .await?;
-
-            let temp_shift = config.temperature.oversampling.reg() > Oversampling::X8.reg();
-            let pres_shift = config.pressure.oversampling.reg() > Oversampling::X8.reg();
-            self.write_reg(
-                Register::CFG_REG,
-                cfg_reg_value(config, temp_shift, pres_shift),
-            )
-            .await?;
+            self.write_reg(Register::CFG_REG, cfg_reg_value(config))
+                .await?;
 
             Ok(())
         }
@@ -863,7 +849,7 @@ mod implementation {
                 .read_many(Register::COEFF_REG_1, &mut bytes)
                 .await
                 .map_err(Error::Bus)?;
-            process_calibration_coefficients(&mut self.coeffs, &bytes);
+            self.coeffs = CalibrationCoeffs::from_bytes(&bytes);
             Ok(())
         }
     }

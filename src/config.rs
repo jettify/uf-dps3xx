@@ -141,6 +141,19 @@ pub enum ConfigError {
     TemperatureSourceMismatch,
 }
 
+impl core::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::MeasurementBusyTimeExceeded => f.write_str("measurement busy time exceeded"),
+            Self::TemperatureSourceMismatch => {
+                f.write_str("temperature source does not match factory calibration")
+            }
+        }
+    }
+}
+
+impl core::error::Error for ConfigError {}
+
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct Config {
@@ -310,8 +323,8 @@ impl Config {
 
     #[must_use]
     pub const fn measurement_period_ms(&self) -> u32 {
-        let pressure_ms = ceil_div(1000, self.pressure.rate.hz());
-        let temp_ms = ceil_div(1000, self.temperature.rate.hz());
+        let pressure_ms = 1000_u32.div_ceil(self.pressure.rate.hz());
+        let temp_ms = 1000_u32.div_ceil(self.temperature.rate.hz());
         if pressure_ms < temp_ms {
             pressure_ms
         } else {
@@ -328,10 +341,6 @@ impl Config {
             half
         }
     }
-}
-
-const fn ceil_div(a: u32, b: u32) -> u32 {
-    a.div_ceil(b)
 }
 
 #[cfg(test)]
@@ -450,5 +459,22 @@ mod tests {
         let cfg = Config::navigation(); // 32 Hz pressure (~32ms), 4 Hz temp (250ms)
         assert_eq!(cfg.measurement_period_ms(), 32);
         assert_eq!(cfg.suggested_poll_period_ms(), 16);
+    }
+
+    #[test]
+    fn config_error_display_messages() {
+        use core::fmt::Write;
+        struct Buf([u8; 64], usize);
+        impl Write for Buf {
+            fn write_str(&mut self, s: &str) -> core::fmt::Result {
+                let bytes = s.as_bytes();
+                self.0[self.1..self.1 + bytes.len()].copy_from_slice(bytes);
+                self.1 += bytes.len();
+                Ok(())
+            }
+        }
+        let mut buf = Buf([0; 64], 0);
+        write!(buf, "{}", ConfigError::MeasurementBusyTimeExceeded).unwrap();
+        assert_eq!(&buf.0[..buf.1], b"measurement busy time exceeded");
     }
 }

@@ -35,31 +35,35 @@ pub(crate) fn i24_to_f32(raw: i32) -> f32 {
     f32::from(hi) * 256.0 + f32::from(bytes[3])
 }
 
-pub(crate) fn process_calibration_coefficients(coeffs: &mut CalibrationCoeffs, bytes: &[u8; 18]) {
-    let c0 = decode_i12_high(bytes[0], bytes[1]);
-    let c1 = decode_i12_low(bytes[1], bytes[2]);
+impl CalibrationCoeffs {
+    pub(crate) fn from_bytes(bytes: &[u8; 18]) -> Self {
+        let c0 = decode_i12_high(bytes[0], bytes[1]);
+        let c1 = decode_i12_low(bytes[1], bytes[2]);
 
-    let c00_hi = i16::from_be_bytes([bytes[3], bytes[4]]);
-    let c00_lo = bytes[5] >> 4;
+        let c00_hi = i16::from_be_bytes([bytes[3], bytes[4]]);
+        let c00_lo = bytes[5] >> 4;
 
-    let c10_hi = decode_i12_low(bytes[5], bytes[6]);
-    let c10_lo = bytes[7];
+        let c10_hi = decode_i12_low(bytes[5], bytes[6]);
+        let c10_lo = bytes[7];
 
-    let c01 = i16::from_be_bytes([bytes[8], bytes[9]]);
-    let c11 = i16::from_be_bytes([bytes[10], bytes[11]]);
-    let c20 = i16::from_be_bytes([bytes[12], bytes[13]]);
-    let c21 = i16::from_be_bytes([bytes[14], bytes[15]]);
-    let c30 = i16::from_be_bytes([bytes[16], bytes[17]]);
+        let c01 = i16::from_be_bytes([bytes[8], bytes[9]]);
+        let c11 = i16::from_be_bytes([bytes[10], bytes[11]]);
+        let c20 = i16::from_be_bytes([bytes[12], bytes[13]]);
+        let c21 = i16::from_be_bytes([bytes[14], bytes[15]]);
+        let c30 = i16::from_be_bytes([bytes[16], bytes[17]]);
 
-    coeffs.c0_half = f32::from(c0) * 0.5;
-    coeffs.c1 = f32::from(c1);
-    coeffs.c00 = f32::from(c00_hi) * 16.0 + f32::from(c00_lo);
-    coeffs.c10 = f32::from(c10_hi) * 256.0 + f32::from(c10_lo);
-    coeffs.c01 = f32::from(c01);
-    coeffs.c11 = f32::from(c11);
-    coeffs.c20 = f32::from(c20);
-    coeffs.c21 = f32::from(c21);
-    coeffs.c30 = f32::from(c30);
+        Self {
+            c0_half: f32::from(c0) * 0.5,
+            c1: f32::from(c1),
+            c00: f32::from(c00_hi) * 16.0 + f32::from(c00_lo),
+            c01: f32::from(c01),
+            c10: f32::from(c10_hi) * 256.0 + f32::from(c10_lo),
+            c11: f32::from(c11),
+            c20: f32::from(c20),
+            c21: f32::from(c21),
+            c30: f32::from(c30),
+        }
+    }
 }
 
 #[inline]
@@ -83,7 +87,7 @@ pub(crate) fn calibrate_pressure(
 mod tests {
     use super::{
         calibrate_pressure, calibrate_temperature, decode_i12_high, decode_i12_low, decode_i24,
-        i24_to_f32, process_calibration_coefficients, CalibrationCoeffs,
+        i24_to_f32, CalibrationCoeffs,
     };
     use crate::{config::Oversampling, device_internal::inv_scale_factor};
 
@@ -145,8 +149,7 @@ mod tests {
             (Oversampling::X128, 116_872.297_422_927, 66.537_910_731),
         ];
         for (bytes, sign) in coefficient_sets {
-            let mut coeffs = CalibrationCoeffs::default();
-            process_calibration_coefficients(&mut coeffs, &bytes);
+            let coeffs = CalibrationCoeffs::from_bytes(&bytes);
             assert_eq!(
                 coeffs,
                 CalibrationCoeffs {
@@ -186,7 +189,7 @@ mod tests {
         // c00 = 81507 (0x13E63), c10 = -66011 (0xEFE25)
         // c01 = -2757 (0xF53B), c11 = 1185 (0x04A1)
         // c20 = -10187 (0xD835), c21 = 117 (0x0075), c30 = -1428 (0xFA6C)
-        let mut bytes = [
+        let bytes = [
             0x0C, 0x8E, 0xD6, // c0 = 200, c1 = -298
             0x13, 0xE6, 0x3E, 0xFE, 0x25, // c00 = 81507, c10 = -66011
             0xF5, 0x3B, // c01 = -2757
@@ -195,8 +198,7 @@ mod tests {
             0x00, 0x75, // c21 = 117
             0xFA, 0x6C, // c30 = -1428
         ];
-        let mut coeffs = CalibrationCoeffs::default();
-        process_calibration_coefficients(&mut coeffs, &mut bytes);
+        let coeffs = CalibrationCoeffs::from_bytes(&bytes);
 
         assert_eq!(coeffs.c0_half, 100.0);
         assert_eq!(coeffs.c1, -298.0);
