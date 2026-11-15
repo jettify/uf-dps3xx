@@ -2,7 +2,7 @@
 name = "uf-dps3xx"
 edition = "2021"
 version = "0.2.0"
-rust-version = "1.81.0"
+rust-version = "1.95.0"
 authors = ["Mykola Novik <nickolainovik@gmail.com>"]
 description = "A platform agnostic driver for DPS3xx through I2C"
 
