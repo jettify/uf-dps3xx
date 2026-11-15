@@ -28,7 +28,7 @@ cortex-m-rt = "0.7.0"
 defmt = { version = "1.0.1", optional = true }
 defmt-rtt = { version = "1.1.0", optional = true }
 panic-probe = { version = "1.0.0", features = ["print-defmt"], optional = true }
-uf-dps3xx = { path = "../../" }
+uf-dps3xx = { path = "../../", features = ["async"] }
 
 
 [profile.release]

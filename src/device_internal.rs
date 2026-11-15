@@ -23,7 +23,7 @@ pub(crate) const fn scale_factor(oversampling: Oversampling) -> f32 {
 }
 
 #[must_use]
-pub(crate) const fn inv_scale_factor(oversampling: Oversampling) -> f32 {
+pub(crate) fn inv_scale_factor(oversampling: Oversampling) -> f32 {
     1.0 / scale_factor(oversampling)
 }
 

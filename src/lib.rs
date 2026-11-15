@@ -21,3 +21,6 @@ pub mod advanced {
     pub use crate::device_internal::{calc_busy_time_ms, calc_total_wait_ms, BUSYTIME_FAILSAFE_MS};
     pub use crate::register::Register;
 }
+
+#[cfg(feature = "async")]
+pub use device::AsyncDps3xx;

@@ -72,6 +72,9 @@ cov:
 ci:
   cargo clippy --lib --all-features -- -D warnings
   cargo build
-  cargo test --all-features
+  cargo test --locked
+  cargo test --locked --features async
+  cargo test --locked --all-features
   cargo test --examples
+  cargo check --lib --features async --target thumbv7em-none-eabihf
   cargo check --manifest-path examples/tbs-lucid-h7/Cargo.toml --target thumbv7em-none-eabihf

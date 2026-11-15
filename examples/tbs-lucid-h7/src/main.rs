@@ -8,10 +8,17 @@ use embassy_executor::Spawner;
 use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_stm32::i2c::{Config as I2cConfig, I2c};
 use embassy_stm32::time::Hertz;
-use embassy_stm32::Config as StmConfig;
-use embassy_time::Timer;
-use uf_dps3xx::{Config as DpsConfig, Dps3xx, I2cAddress, Poll};
+use embassy_stm32::{bind_interrupts, dma, i2c, peripherals, Config as StmConfig};
+use embassy_time::{Delay, Timer};
+use uf_dps3xx::{AsyncDps3xx, Config as DpsConfig, I2cAddress};
 use {defmt_rtt as _, panic_probe as _};
+
+bind_interrupts!(struct Irqs {
+    I2C2_EV => i2c::EventInterruptHandler<peripherals::I2C2>;
+    I2C2_ER => i2c::ErrorInterruptHandler<peripherals::I2C2>;
+    DMA1_STREAM0 => dma::InterruptHandler<peripherals::DMA1_CH0>;
+    DMA1_STREAM1 => dma::InterruptHandler<peripherals::DMA1_CH1>;
+});
 
 #[embassy_executor::task]
 async fn blink_task(mut led: Output<'static>) {
@@ -34,17 +41,19 @@ async fn main(spawner: Spawner) {
     let mut cfg = I2cConfig::default();
     cfg.frequency = Hertz::khz(400);
 
-    let i2c = I2c::new_blocking(p.I2C2, p.PB10, p.PB11, cfg);
+    let i2c = I2c::new(p.I2C2, p.PB10, p.PB11, p.DMA1_CH0, p.DMA1_CH1, Irqs, cfg);
 
-    let mut dps = Dps3xx::new(i2c, I2cAddress::Primary, DpsConfig::navigation())
-        .expect("invalid dps3xx config");
-
-    while let Poll::Pending { wait_ms } = dps.poll_init().expect("dps init failed") {
-        Timer::after_millis(u64::from(wait_ms)).await;
-    }
+    let mut dps = AsyncDps3xx::new_async(
+        i2c,
+        I2cAddress::Primary,
+        DpsConfig::navigation(),
+        &mut Delay,
+    )
+    .await
+    .expect("dps init failed");
 
     loop {
-        if let Some(sample) = dps.try_read_sample().expect("dps read sample failed") {
+        if let Some(sample) = dps.try_read_sample().await.expect("dps read sample failed") {
             info!(
                 "pressure {} Pa ({} hPa) temp {} C",
                 sample.pressure_pa,

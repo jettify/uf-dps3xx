@@ -6,7 +6,8 @@
 [![docs.rs](https://img.shields.io/docsrs/uf-dps3xx)](https://docs.rs/uf-dps3xx/latest/uf_dps3xx/)
 
 `uf-dps3xx` is a platform-agnostic, `no_std` driver for the Infineon `DPS3xx` (`DPS310`, `DPS368`) family of high-precision barometric pressure and temperature sensors.
-It uses `embedded-hal` 1.0 I2C traits and provides both blocking (`DelayNs`) and non-blocking poll-driven interfaces.
+It supports `embedded-hal` 1.0 blocking I2C and optional `embedded-hal-async` 1.0 I2C.
+Initialization can use a HAL delay or application-controlled polling. Requires Rust 1.81 or newer.
 
 ## Supported Hardware
 
@@ -54,6 +55,80 @@ where
 }
 ```
 
+## Native Async Support
+
+Enable the `async` feature to use `AsyncDps3xx`. The blocking `Dps3xx` remains available.
+The async driver works with any runtime providing `embedded-hal-async` I2C and delay implementations;
+it requires no allocator or runtime dependency.
+
+```toml
+[dependencies]
+uf-dps3xx = { version = "0.2", features = ["async"] }
+```
+
+```rust
+# #[cfg(feature = "async")]
+# mod async_example {
+use embedded_hal_async::{delay::DelayNs, i2c::I2c};
+use uf_dps3xx::{AsyncDps3xx, Config, Error, I2cAddress, Sample};
+
+async fn read_sample<I: I2c, D: DelayNs>(
+    i2c: I,
+    delay: &mut D,
+) -> Result<Sample, Error<I::Error>> {
+    let config = Config::navigation();
+    let poll_ms = config.suggested_poll_period_ms();
+    let mut sensor = AsyncDps3xx::new_async(
+        i2c, I2cAddress::Primary, config, delay,
+    ).await?;
+
+    loop {
+        if let Some(sample) = sensor.try_read_sample().await? {
+            return Ok(sample);
+        }
+        delay.delay_ms(poll_ms).await;
+    }
+}
+# }
+```
+
+For Embassy, pass an async I2C peripheral and `embassy_time::Delay`.
+Every method that accesses I2C is async, including `poll_init()`, `reconfigure()`,
+`set_mode()`, and `try_pop_fifo()`. `new()`, `new_i2c()`, `config()`, `is_ready()`,
+`init_stage()`, and `release()` are synchronous.
+
+`try_read_sample().await` awaits I2C transactions and returns `None` if no pressure
+sample is ready. It does not wait for a new sensor conversion. `poll_init().await`
+likewise awaits I2C; callers must still wait the returned `wait_ms` between polls.
+
+### Async Cancellation and Recovery
+
+Prefer `AsyncDps3xx::new()` followed by `init_async(&mut delay).await` when retaining
+ownership of the driver on failure or cancellation matters. Cancelling `new_async()`
+drops the driver and its I2C peripheral.
+
+Cancelling or failing an async `reconfigure()` or `set_mode()` invalidates readiness
+before the first write. The cached configuration is committed only on success.
+After an interrupted `set_mode()`, the driver reports `InitStage::ApplyMode`. Retry
+`set_mode()`, `standby()`, or `start_background()` directly to select a mode, or call
+`init_async()` / `poll_init()` to restore the last committed mode. These mode-only
+recovery paths write only `MEAS_CFG`, preserving FIFO entries and configuration registers.
+
+After an interrupted `reconfigure()`, call `init_async()` or `poll_init()` to restore
+the last committed configuration, or retry `reconfigure()` with the requested config.
+Full reconfiguration recovery flushes FIFO when enabled. Mode-only retries are rejected
+while full configuration recovery is pending; finish that recovery before changing modes.
+A cancelled or failed `reset()` requires initialization again.
+
+Initialization can be retried with `init_async()` after cancellation. If its priming
+delay was interrupted, it starts a fresh temperature conversion. After cancelling
+`poll_init()` itself, use `init_async()` to handle the remaining timing automatically.
+Cancelled reads may consume a sample, clear an interrupt, or pop a FIFO entry without
+returning it. A cancelled temperature read can leave pressure compensation using the
+previous cached temperature; reset and reinitialize if that reference must be refreshed
+before continuing. Recovery assumes the underlying HAL permits reuse after cancellation;
+otherwise recover the bus with `release()` and follow the HAL's recovery procedure.
+
 ## Initialization
 
 ### Blocking Initialization
@@ -73,7 +148,8 @@ if let Err(err) = sensor.init_blocking(delay) {
 
 ### Non-Blocking / Scheduler-Driven Initialization
 
-Use `poll_init()` when your application has its own async runtime or tick scheduler:
+Use `poll_init()` when your application has its own tick scheduler. With `Dps3xx`,
+I2C transactions still block; use `AsyncDps3xx` for native async I2C:
 
 ```rust,ignore
 use uf_dps3xx::{Config, Dps3xx, I2cAddress, Poll};
