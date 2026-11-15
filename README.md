@@ -5,60 +5,44 @@
 [![crates.io](https://img.shields.io/crates/v/uf-dps3xx)](https://crates.io/crates/uf-dps3xx)
 [![docs.rs](https://img.shields.io/docsrs/uf-dps3xx)](https://docs.rs/uf-dps3xx/latest/uf_dps3xx/)
 
-`uf-dps3xx` is a platform-agnostic, `no_std` driver for the `DPS3xx` (`DPS310`, `DPS368`) family of pressure and temperature sensors.
-It uses `embedded-hal` 1.0 I2C traits and is designed to stay simple in embedded applications.
+`uf-dps3xx` is a platform-agnostic, `no_std` driver for the Infineon `DPS3xx` (`DPS310`, `DPS368`) family of high-precision barometric pressure and temperature sensors.
+It uses `embedded-hal` 1.0 I2C traits and provides both blocking (`DelayNs`) and non-blocking poll-driven interfaces.
 
 ## Supported Hardware
 
-- DPS310
-- DPS368
-- I2C transport only
-- SPI is not implemented
+- `DPS310`
+- `DPS368`
+- I2C transport (`0x76` primary, `0x77` secondary, or custom address)
 
 ## Installation
 
 ```toml
 [dependencies]
-uf-dps3xx = "0.1"
+uf-dps3xx = "0.2"
 ```
 
 Enable `defmt` formatting support with:
 
 ```toml
 [dependencies]
-uf-dps3xx = { version = "0.1", features = ["defmt"] }
+uf-dps3xx = { version = "0.2", features = ["defmt"] }
 ```
 
 ## Quick Start
 
-The driver uses a typed state machine:
-
-- `Dps3xx<_, Uninit>` after `new_i2c`
-- `Dps3xx<_, Ready>` after initialization completes
-
 ```rust
 use embedded_hal::delay::DelayNs;
-use uf_dps3xx::{Config, Dps3xx, I2cAddress, Oversampling, Rate, Uninit};
+use uf_dps3xx::{Config, Dps3xx, Error, I2cAddress, Sample};
 
-fn read_sample<I2C, E, D>(
-    i2c: I2C,
-    delay: &mut D,
-) -> Result<uf_dps3xx::Sample, uf_dps3xx::Error<E>>
+fn read_sample<I2C, E, D>(i2c: I2C, delay: &mut D) -> Result<Sample, Error<E>>
 where
     I2C: embedded_hal::i2c::I2c<Error = E>,
     D: DelayNs,
 {
-    let config = Config::default()
-        .pressure(Rate::Hz8, Oversampling::X8)
-        .temperature(Rate::Hz8, Oversampling::X8)
-        .init_timeout_ms(5_000);
-
+    let config = Config::navigation();
     let poll_ms = config.suggested_poll_period_ms();
-    let mut sensor = Dps3xx::<_, Uninit>::new_i2c(i2c, I2cAddress::Primary, config)?
-        .init_blocking(delay)
-        .map_err(|err| err.into_error())?;
 
-    sensor.start_background()?;
+    let mut sensor = Dps3xx::new_blocking(i2c, I2cAddress::Primary, config, delay)?;
 
     loop {
         if let Some(sample) = sensor.try_read_sample()? {
@@ -70,77 +54,89 @@ where
 }
 ```
 
-## I2C Address
-
-Use `I2cAddress::Primary` for `0x76` and `I2cAddress::Secondary` for `0x77`.
-If your board uses a different address, pass `I2cAddress::Custom(address)`.
-
 ## Initialization
 
-Use `init_blocking` when you have a delay implementation and want a simple setup flow.
-It waits for the sensor, performs the required temperature initialization sequence, reads calibration coefficients, and returns a ready driver.
+### Blocking Initialization
+
+Use `Dps3xx::new_blocking` (or `Dps3xx::new` followed by `init_blocking`) when you have an `embedded_hal::delay::DelayNs` implementation.
+On completion, the sensor automatically enters the configured operating `Mode` (which defaults to `Mode::BackgroundAll`).
+
+If you want to retain ownership of the `Dps3xx` instance (and recover the I2C bus via `release()`) if initialization fails:
 
 ```rust,ignore
-let mut sensor = Dps3xx::<_, Uninit>::new_i2c(i2c, I2cAddress::Primary, Config::default())?
-    .init_blocking(delay)
-    .map_err(|err| err.into_error())?;
-```
-
-Use `init` when your application has its own scheduler or event loop:
-
-```rust,ignore
-use uf_dps3xx::{Dps3xx, I2cAddress, Poll, Uninit};
-
-let sensor = Dps3xx::<_, Uninit>::new_i2c(i2c, I2cAddress::Primary, Config::default())?;
-let mut init = sensor.init().map_err(|err| err.into_error())?;
-
-loop {
-    match init.poll()? {
-        Poll::Pending { wait_ms } => {
-            // Poll again after at least `wait_ms`.
-        }
-        Poll::Ready(sensor) => {
-            break sensor;
-        }
-    }
+let mut sensor = Dps3xx::new(i2c, I2cAddress::Primary, Config::navigation())?;
+if let Err(err) = sensor.init_blocking(delay) {
+    let i2c = sensor.release();
+    return Err(err);
 }
 ```
 
-## Measurements
+### Non-Blocking / Scheduler-Driven Initialization
 
-After initialization, call `start_background` to start continuous pressure and temperature measurement.
+Use `poll_init()` when your application has its own async runtime or tick scheduler:
 
 ```rust,ignore
-sensor.start_background()?;
+use uf_dps3xx::{Config, Dps3xx, I2cAddress, Poll};
+
+let mut sensor = Dps3xx::new(i2c, I2cAddress::Primary, Config::navigation())?;
+
+while let Poll::Pending { wait_ms } = sensor.poll_init()? {
+    // Yield or sleep for at least `wait_ms` milliseconds.
+}
 ```
 
-Read calibrated values with:
+## Measurements & Decoupled Rates
 
-- `try_read_sample()`: returns `Ok(Some(Sample))` when pressure and temperature are ready, otherwise `Ok(None)`.
-- `read_sample()`: returns `Error::NoSampleReady` when a full sample is not ready.
-- `read_raw_sample()`: reads raw 24-bit pressure and temperature ADC values.
+By default, `Config` starts continuous background pressure and temperature measurement (`Mode::BackgroundAll`) as soon as initialization completes.
 
-Use `standby()` to stop measurement.
+Pressure and temperature rates can be configured independently (for example, 32 Hz or 64 Hz pressure paired with 4 Hz temperature in flight controllers):
 
-`Sample` contains calibrated pressure in pascals and temperature in degrees Celsius:
+- `try_read_sample()`: returns `Ok(Some(Sample))` whenever a new pressure measurement is ready, automatically compensating it with the latest cached temperature reading.
+- `read_sample()`: returns `Error::NoSampleReady` when a pressure sample is not ready.
+- `read_raw_sample()`: burst-reads the raw 24-bit signed pressure and temperature ADC values.
+- `try_read_temperature()`: returns a new calibrated temperature in degrees Celsius when ready and updates the temperature cache used for pressure compensation. Supports temperature-only operation without consuming pressure data.
+- `read_pressure_raw()`: reads only the signed 24-bit pressure ADC value, leaving temperature data untouched. Check `status()` first when freshness matters.
+- `try_pop_fifo()`: pops and decodes a single `FifoEntry` (`FifoEntry::Pressure(Sample)` or `FifoEntry::Temperature(f32)`) when hardware FIFO mode is enabled.
+
+`Sample` contains calibrated pressure in pascals (`pressure_pa`), a helper for hectopascals (`pressure_hpa()`), and temperature in degrees Celsius (`temperature_c`):
 
 ```rust
-pub struct Sample {
-    pub pressure_pa: f32,
-    pub temperature_c: f32,
-}
+use uf_dps3xx::Sample;
+
+let sample = Sample {
+    pressure_pa: 101_325.0,
+    temperature_c: 25.0,
+};
+assert!((sample.pressure_hpa() - 1013.25).abs() < 1e-2);
 ```
 
-## Configuration
+## Configuration & Application Presets
 
-`Config::default()` uses 1 Hz pressure and temperature measurements with 1x oversampling.
+Conversion-budget validation follows the selected mode: background modes count only active
+channels, command modes ignore periodic rates, and idle mode has no conversion budget.
+Changing modes revalidates the budget before starting measurements.
 
-```rust,ignore
-use uf_dps3xx::{Config, FifoConfig, InterruptConfig, Oversampling, Rate, TemperatureSource};
+`TemperatureSource::Auto` selects the sensor associated with the factory calibration.
+Explicit `Internal` or `External` selections must match that calibration; otherwise initialization
+or reconfiguration returns `Error::InvalidConfig` with `ConfigError::TemperatureSourceMismatch`.
 
-let config = Config::default()
-    .pressure(Rate::Hz16, Oversampling::X8)
-    .temperature(Rate::Hz16, Oversampling::X8)
+`Config` provides built-in presets matching Infineon datasheet recommendations:
+
+- `Config::weather()` — 1 Hz pressure (`X1`), 1 Hz temperature (`X1`)
+- `Config::indoor()` — 16 Hz pressure (`X8`), 2 Hz temperature (`X1`)
+- `Config::navigation()` — 32 Hz pressure (`X16`), 4 Hz temperature (`X1`)
+- `Config::high_rate()` — 64 Hz pressure (`X8`), 4 Hz temperature (`X1`)
+
+Or customize every field with the `const` builder:
+
+```rust
+use uf_dps3xx::{
+    Config, FifoConfig, InterruptConfig, Mode, Oversampling, Rate, TemperatureSource,
+};
+
+let config = Config::new()
+    .pressure(Rate::Hz32, Oversampling::X16)
+    .temperature(Rate::Hz4, Oversampling::X1)
     .temperature_source(TemperatureSource::Auto)
     .fifo(FifoConfig {
         enable: false,
@@ -151,76 +147,21 @@ let config = Config::default()
         temperature_ready: false,
         pressure_ready: false,
     })
+    .mode(Mode::BackgroundAll)
     .init_timeout_ms(5_000);
-```
 
-Available rates are `Hz1`, `Hz2`, `Hz4`, `Hz8`, `Hz16`, `Hz32`, `Hz64`, and `Hz128`.
-Available oversampling values are `X1`, `X2`, `X4`, `X8`, `X16`, `X32`, `X64`, and `X128`.
-
-The driver validates measurement busy time in `new_i2c`. Invalid combinations return `Error::InvalidConfig`.
-
-`Config::suggested_poll_period_ms()` returns a conservative polling interval for the configured rates.
-
-## Status And Device Info
-
-`status()` reads the sensor status bits:
-
-```rust,ignore
-let status = sensor.status()?;
-
-if status.pressure_ready && status.temperature_ready {
-    let sample = sensor.read_sample()?;
-}
-```
-
-`product_id()` reads the device product ID register.
-
-## Errors
-
-The main error type is:
-
-```rust,ignore
-pub enum Error<I2cError> {
-    Bus(I2cError),
-    InvalidDevice { id: u8 },
-    InvalidConfig { reason: ConfigError },
-    Timeout { stage: InitStage },
-    NoSampleReady,
-    InitConsumed,
-}
-```
-
-Methods that consume the driver during a state transition return `TransitionError` on failure.
-It keeps the driver so callers can recover the bus or inspect the error:
-
-```rust,ignore
-match sensor.reset() {
-    Ok(sensor) => {
-        // Sensor is back in the Uninit state.
-    }
-    Err(err) => {
-        let i2c = err.release();
-    }
-}
-```
-
-## Bus Recovery
-
-Use `release()` to recover the underlying I2C bus:
-
-```rust,ignore
-let i2c = sensor.release();
+assert!(config.validate().is_ok());
 ```
 
 ## Examples
 
-- [examples/simple.rs](https://github.com/jettify/uf-dps3xx/blob/main/examples/simple.rs) shows a mocked init and sample read flow.
-- [examples/tbs-lucid-h7/src/main.rs](https://github.com/jettify/uf-dps3xx/blob/main/examples/tbs-lucid-h7/src/main.rs) shows an embedded setup for the TBS Lucid H7 flight controller.
+- [examples/simple.rs](https://github.com/jettify/uf-dps3xx/blob/main/examples/simple.rs) shows a mocked poll-based init and sample read flow.
+- [examples/tbs-lucid-h7/src/main.rs](https://github.com/jettify/uf-dps3xx/blob/main/examples/tbs-lucid-h7/src/main.rs) shows an Embassy setup for the TBS Lucid H7 flight controller.
 
 ## Inspirations
 
-1. https://github.com/Infineon/arduino-xensiv-dps3xx
-2. https://github.com/dprotsiv/dps310-rs
+1. <https://github.com/Infineon/arduino-xensiv-dps3xx>
+2. <https://github.com/dprotsiv/dps310-rs>
 
 ## License
 
