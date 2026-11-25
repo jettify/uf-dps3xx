@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/jettify/uf-dps3xx/compare/v0.2.0...v0.3.0) - 2026-11-25
+
+### Added
+
+- Add async driver support.
+- Make API much simpler avoiding type state. ([#18](https://github.com/jettify/uf-dps3xx/issues/18))
+
+### Other
+
+- Update dependencies.
+- Make code more redable withtout api changes.
+
 ## [0.2.0](https://github.com/jettify/uf-dps3xx/compare/v0.1.1...v0.2.0) - 2026-04-29
 
 ### Added
